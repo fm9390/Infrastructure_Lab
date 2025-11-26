@@ -1,0 +1,8 @@
+---
+- name: update apt cache
+  apt:
+    update_cache: true
+
+- name: Reconfigure GitLab
+  command: gitlab-ctl reconfigure
+  listen: Reconfigure GitLab

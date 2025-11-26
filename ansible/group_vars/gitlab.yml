@@ -1,0 +1,14 @@
+gitlab_external_url: "http://gitlab.homelab.lan"
+gitlab_url: "http://192.168.178.202"
+gitlab_repo_path: "gitlab/gitlab-ce"
+gitlab_package_name: "gitlab-ce"
+gitlab_runner_token: "glrt-B-ttdumIqGx-6HIPojgLb286MQp0OjEKdToxCw.01.120ymix07"
+# eintragen nachdem man Runner mit GUI erstellt hat als Admin
+
+# Hier pinnst du die Version, die wirklich installiert sein soll
+# Beispiel-Format: "17.4.2-ce.0"
+gitlab_version: "18.4.0-ce.0"
+# "18.5.2-ce.0"
+
+# Updates nur, wenn du es explizit erlaubst
+gitlab_update_allowed: false

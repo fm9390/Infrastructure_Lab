@@ -1,0 +1,149 @@
+
+#################################################################
+# GitLab – Versions-Check
+#################################################################
+
+- name: Check available GitLab versions from apt
+  command: "apt-cache madison {{ gitlab_package_name }}"
+  # führt shell Befehl aus
+  register: gitlab_madison
+  # speichert Output des Befehls in Variable
+  changed_when: false
+  # Module wie apt, template, copy erkennen automatisch Änderungen
+  # bei command: Modul nicht, weil einfach shell Befehl ausgeführt wird
+  # ungeachtet Ausgabe -> Befehl soll nie als changed angezeigt werden
+  tags: gitlab_update_check
+  # ermöglicht gezielte Abfrage: ansible-playbook gitlab.yml --tags gitlab_update_check
+
+  # gitlab_madison.stdout_lines = [
+  # "gitlab-ce | 18.5.2-ce.0 | https://packages.gitlab.com/… |",
+  #  "gitlab-ce | 18.5.1-ce.0 | https://packages.gitlab.com/… |",
+
+- name: Extract latest GitLab apt version
+  set_fact:
+    gitlab_latest_version: "{{ (gitlab_madison.stdout_lines[0].split('|')[1]).strip() }}"
+  when: gitlab_madison.stdout_lines | length > 0
+  tags: gitlab_update_check
+
+- name: Normalize GitLab versions (strip -ce.0)
+  set_fact:
+    gitlab_version_clean: "{{ gitlab_version | regex_replace('-ce\\.0$', '') }}"
+    gitlab_latest_clean: "{{ gitlab_latest_version | regex_replace('-ce\\.0$', '') }}"
+  when: gitlab_latest_version is defined
+  # Task läuft nur, wenn apt etwas zurück gegegben hat
+  tags: gitlab_update_check
+
+- name: Inform about newer GitLab version
+  debug:
+    msg: >
+      Es ist eine neuere GitLab-Version im Repo verfügbar: {{ gitlab_latest_version }}
+      (aktuell gepinnt: {{ gitlab_version }}).
+      Wenn du updaten willst, passe 'gitlab_version' an
+      und setze 'gitlab_update_allowed: true'.
+  when:
+    - gitlab_latest_version is defined
+    - gitlab_latest_clean is version(gitlab_version_clean, '>')
+  tags: gitlab_update_check
+
+#################################################################
+# GitLab – Installation
+#################################################################
+
+- name: Ensure base packages are installed
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - openssh-server
+      - tzdata
+    state: present
+    update_cache: yes
+
+- name: Add GitLab apt repository (via official script)
+  shell: |
+    curl https://packages.gitlab.com/install/repositories/{{ gitlab_repo_path }}/script.deb.sh | bash
+  args:
+    creates: /etc/apt/sources.list.d/gitlab_gitlab-ce.list
+
+- name: Check if GitLab is already installed
+  stat:
+    path: /etc/gitlab/initial_root_password
+  register: gitlab_installed
+
+- name: Install / update GitLab CE (pinned version)
+  apt:
+    name: "{{ gitlab_package_name }}={{ gitlab_version }}"
+    state: present
+  environment:
+    EXTERNAL_URL: "{{ gitlab_external_url }}"
+  when: not gitlab_installed.stat.exists or gitlab_update_allowed
+
+####################################################################################################
+## gitlab swap
+####################################################################################################
+
+- name: Prüfen, ob Swap bereits existiert
+  command: swapon --show
+  register: swap_check
+  changed_when: false
+
+- name: Swapfile erstellen (4 GB), wenn keins existiert
+  command: fallocate -l 4G /swapfile
+  when: swap_check.stdout == ""
+  args:
+    creates: /swapfile
+
+- name: Rechte setzen
+  file:
+    path: /swapfile
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Swap initialisieren
+  command: mkswap /swapfile
+  when: swap_check.stdout == ""
+
+- name: Swap aktivieren
+  command: swapon /swapfile
+  when: swap_check.stdout == ""
+
+- name: Eintrag in /etc/fstab hinzufügen (für Autostart)
+  lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+    state: present
+
+- name: Set vm.swappiness to 10
+  sysctl:
+    name: vm.swappiness
+    value: 10
+    state: present
+    reload: yes
+
+- name: anzeigen wieviel Swap aktiv ist
+  command: free -h
+  register: memory
+
+- debug:
+    var: memory.stdout
+
+####################################################################################################
+## gitlab.rb verschlanken
+####################################################################################################
+
+- name: Deploy static gitlab.rb
+  copy:
+    src: gitlab.rb
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: '0600'
+  notify: Reconfigure GitLab
+
+
+###################################################################################################
+
+- name: Install and configure GitLab Runner
+  import_tasks: runner.yml
+  tags: gitlab_runner

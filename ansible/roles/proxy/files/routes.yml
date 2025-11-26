@@ -1,0 +1,32 @@
+http:
+  routers:
+    gitlab:
+      rule: "Host(`gitlab.homelab.lan`)"
+      service: gitlab
+      entryPoints:
+        - web
+    wordpress_dev:
+      rule: "Host(`website.dev.homelab.lan`)"
+      service: wordpress_dev
+      entryPoints:
+        - web
+    wordpress_prod:
+      rule: "Host(`website.homelab.lan`)"
+      service: wordpress_prod
+      entryPoints:
+        - web
+
+  services:
+    gitlab:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.178.202"
+    wordpress_dev:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.178.203"
+    wordpress_prod:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.178.204"
+

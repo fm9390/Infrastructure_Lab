@@ -1,0 +1,23 @@
+entryPoints: 
+# in Proxy, später noch 443
+    web: 
+        address: ":80"
+    traefik:
+        address: ":8080"
+
+providers: 
+# Traefik kann Konfiguration aus versch. Quellen laden, z.B file / Docker provider
+    file: 
+        directory: "/etc/traefik/dynamic"
+        watch: true 
+        # wenn eine Datei ind diesem Ordner sich ändert, lädt Traefic sie automatisch neu
+
+log: 
+    level: INFO 
+    # ERROR/WARN/INFO/DEBUG
+
+api: 
+    dashboard: true 
+    # Traefik startet sein Dashboard über 'http://<proxy-ip>:8080/dashboard/'
+    insecure: true 
+    # UI öffentlich, ohne Auth -> später ändern für sichere Produktion

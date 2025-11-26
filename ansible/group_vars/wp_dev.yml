@@ -1,0 +1,12 @@
+wp_db_name: wp_dev
+wp_db_user: wp_user
+wp_db_password: "4%VnX*d^l1a9R9gwWx&L!GQfQ@1DNd4B"
+wp_root: /var/www/wordpress-dev
+wp_server_name: website.dev.homelab.lan
+
+# WordPress Versioning
+wp_version: "6.7.1"             # die Version, die du FREIGIBST
+wp_update_allowed: false        # Update nur, wenn du explizit erlaubt hast
+
+# Download-URL aus der Version bauen
+wp_download_url: "https://wordpress.org/wordpress-{{ wp_version }}.tar.gz"

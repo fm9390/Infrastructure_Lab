@@ -1,0 +1,36 @@
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  [32m+[0m create[0m
+
+Terraform planned the following actions, but then encountered a problem:
+
+[1m  # null_resource.bootstrap_template[0m will be created
+[0m  [32m+[0m[0m resource "null_resource" "bootstrap_template" {
+      [32m+[0m[0m id       = (known after apply)
+      [32m+[0m[0m triggers = {
+          [32m+[0m[0m "version" = "ubuntu-24.04-v1"
+        }
+    }
+
+[1mPlan:[0m 1 to add, 0 to change, 0 to destroy.
+[0m
+Changes to Outputs:
+  [32m+[0m[0m hosts_static = {
+      [32m+[0m[0m Game_VM = {
+          [32m+[0m[0m hostname = "db-1"
+          [32m+[0m[0m ip       = "192.168.178.3"
+        }
+      [32m+[0m[0m VPN_VM  = {
+          [32m+[0m[0m hostname = "vpn"
+          [32m+[0m[0m ip       = "192.168.178.2"
+        }
+    }
+[31m╷[0m[0m
+[31m│[0m [0m[1m[31mError: [0m[0m[1mpermissions for user/token root@pam are not sufficient, please provide also the following permissions that are missing: [VM.Monitor][0m
+[31m│[0m [0m
+[31m│[0m [0m[0m  with provider["registry.terraform.io/telmate/proxmox"],
+[31m│[0m [0m  on main.tf line 11, in provider "proxmox":
+[31m│[0m [0m  11: provider "proxmox" [4m{[0m[0m
+[31m│[0m [0m
+[31m╵[0m[0m

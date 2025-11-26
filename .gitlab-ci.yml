@@ -1,0 +1,31 @@
+stages:
+  - deploy
+  # Definition der Reihenfolge, z.B. test, build, deploy
+
+variables:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+deploy_dev:
+  stage: deploy
+  # Job (deploy_dev) gehört zu stage (deploy)
+  tags:
+    - homelab
+    # auf welchem runner Job läuft
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    # wann Job gestartet wird -> wenn commit auf main branch
+  before_script:
+    - cd "$CI_PROJECT_DIR/ansible"
+    # $CI_PROJECT_DIR -> zeigt auf Verzeichnis in das gitlab Repo geklont hat
+    # GitLab-Env-Variable
+    # passiert vor Job Ausführung
+  script:
+  # was Job wirklich macht
+    - ansible -i inventory.ini wp_dev -m ping
+    - ansible-playbook -i inventory.ini site.yml --limit wp_dev
+  environment:
+  # v.a. für GitLab GUI, keine technische Wirkung auf deployment
+    name: dev
+    # Umgebung heißt dev
+    url: http://website.dev.homelab.lan
+    # GitLab zeigt im UI einen Button „View environment“, der dich direkt auf diese URL führt.

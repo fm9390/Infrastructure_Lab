@@ -1,0 +1,24 @@
+traefik_static_config_path: /etc/traefik/traefik.yml
+traefik_dynamic_dir: /etc/traefik/dynamic
+traefik_dynamic_file: /etc/traefik/dynamic/routes.yml
+
+traefik_routes:
+  - name: gitlab
+    host: gitlab.homelab.lan
+    url: "http://192.168.178.202"   # Gitlab-VM
+  - name: wordpress_dev
+    host: website.dev.homelab.lan
+    url: "http://192.168.178.203"   # WP DEV
+  - name: wordpress_prod
+    host: website.homelab.lan
+    url: "http://192.168.178.204"   # WP PROD
+
+
+traefik_version: "v3.1.2"
+traefik_os: "linux"
+traefik_arch: "amd64"
+
+traefik_download_url: "https://github.com/traefik/traefik/releases/download/{{ traefik_version }}/traefik_{{ traefik_version }}_{{ traefik_os }}_{{ traefik_arch }}.tar.gz"
+
+# Flag, ob ein Update überhaupt gemacht werden darf
+traefik_update_allowed: false

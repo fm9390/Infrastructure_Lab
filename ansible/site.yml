@@ -1,0 +1,22 @@
+# gitlab.yml
+---
+- name: Prepare GitLab
+  hosts: gitlab
+  become: yes
+
+  roles:
+    - gitlab
+
+- name: Configure Traefik proxy
+  hosts: proxy
+  become: yes
+
+  roles:
+    - proxy
+
+- name: Prepare WordPress dev
+  hosts: wp_dev
+  become: yes
+
+  roles:
+    - wp_dev

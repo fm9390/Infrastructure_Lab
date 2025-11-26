@@ -1,0 +1,126 @@
+
+########################################################################
+## Check, ob es neueres Traefik Release gibt
+########################################################################
+
+- name: Get latest Traefik release from GitHub
+  uri:
+  # Ansible Modul um hhtp Anfragen zu machen (ähnlich curl)
+    url: https://api.github.com/repos/traefik/traefik/releases/latest
+    # GitHub API-Endpoint, der neustes Traefik-Release in .json zurück gibt
+    return_content: yes 
+    # gibt .json body an Ansible zurück zur Weiterverwertung, z.B. tag_name="v3.1.3"
+  register: traefik_latest
+  # speichert komplettes Ergebnis des Tasks in Variable traefik_latest
+
+- name: Normalize versions (remove leading v)
+  set_fact:
+  # neue Variablen während Laufzeit definieren
+    traefik_version_clean: "{{ traefik_version | regex_replace('^v', '') }}"
+    # z.B "3.1.2"
+    traefik_latest_clean: "{{ traefik_latest.json.tag_name | regex_replace('^v', '') }}"
+    # z.B "3.1.3"
+
+- name: Warn if newer Traefik version is available
+  debug:
+    msg: >
+      Es gibt eine neue Traefik-Version: {{ traefik_latest.json.tag_name }}
+      (aktuell gepinnt: {{ traefik_version }}).
+      Wenn du updaten willst, passe 'traefik_version' an
+      und setze 'traefik_update_allowed: true'.
+  when: traefik_latest_clean is version(traefik_version_clean, '>')
+
+
+########################################################################
+## Traefik Binary installieren
+########################################################################
+
+- name: Check if Traefik binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/traefik
+  register: traefik_binary
+
+- name: Download Traefik binary
+  get_url:
+    url: "{{ traefik_download_url }}"
+    dest: /tmp/traefik_{{ traefik_version }}.tar.gz
+    mode: "0644"
+  when: traefik_update_allowed or not traefik_binary.stat.exists
+  register: traefik_download
+
+- name: Extract Traefik binary
+  unarchive:
+    src: "/tmp/traefik_{{ traefik_version }}.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+  when: (traefik_update_allowed or not traefik_binary.stat.exists) and traefik_download.changed
+
+- name: Move Traefik binary to /usr/local/bin
+  copy:
+    src: /tmp/traefik
+    dest: /usr/local/bin/traefik
+    mode: "0755"
+    remote_src: yes
+  when: (traefik_update_allowed or not traefik_binary.stat.exists) and traefik_download.changed
+
+########################################################################
+## systemd Service installieren
+########################################################################
+
+- name: Install systemd service for Traefik
+  copy:
+    src: traefik.service
+    dest: /etc/systemd/system/traefik.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Traefik
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+    # geänderte unit datei in /etc/systemd/system erst nach 'daemon_reload' erkannt
+
+########################################################################
+## Traefik-Konfiguration deployen
+########################################################################
+
+- name: Ensure Traefik config directory exists
+  file:
+    path: "{{ traefik_dynamic_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy static Traefik config
+  ansible.builtin.copy:
+    src: traefik.yml
+    dest: "{{ traefik_static_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Traefik
+
+# Dynamic Routes
+- name: Install Traefik routes config
+  copy:
+    src: routes.yml
+    dest: /etc/traefik/dynamic/routes.yml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Traefik
+
+
+########################################################################
+## Dienst starten & aktivieren
+########################################################################
+
+- name: Ensure Traefik is running and enabled
+  systemd:
+    name: traefik
+    state: started
+    enabled: yes
+    # systemctl enable traefik -> Traefik startet bei Systemstart
+

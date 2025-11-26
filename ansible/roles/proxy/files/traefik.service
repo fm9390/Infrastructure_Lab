@@ -1,0 +1,16 @@
+[Unit]
+Description=Traefik Service 
+# Beschreibung, die man im 'systemctl status traefik' sieht
+After=network.target 
+# service erst starten, wenn Netzwerk up
+
+[Service]
+ExecStart=/usr/local/bin/traefik --configfile=/etc/traefik/traefik.yml
+# Traefik binary
+Restart=always 
+# wenn service crasht, automatischer Neustart
+User=root
+
+[Install]
+WantedBy=multi-user.target 
+# bei 'systemctl enable traefik' wird symlink so gesetzt, dass Traefik automatisch beim Boot mit 'User-Runlevel' (normaler Serverbetrieb) gestartet wird

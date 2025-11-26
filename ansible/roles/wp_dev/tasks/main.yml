@@ -1,0 +1,211 @@
+
+##########################################################################
+## Apache Webserver herunterladen und aktivieren, 
+## PHP und andere Extensions laden
+##########################################################################
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+  
+- name: Install Apache web server
+  ansible.builtin.apt:
+    name: apache2
+    state: present
+
+- name: Install PHP and common extensions
+  ansible.builtin.apt: 
+    name: 
+      - php
+      - libapache2-mod-php
+      - php-mysql
+      - php-xml
+      - php-gd
+      - php-curl
+      - php-mbstring
+      - php-zip
+    state: present
+
+- name: Ensure Apache is running and enabled
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true #beim Boot automatisch starten
+
+- name: Create phpinfo test file
+  ansible.builtin.copy:
+    dest: /var/www/html/info.php
+    content: "<?php phpinfo(); ?>\n"
+    owner: www-data
+    group: www-data
+    mode: "0644"
+
+##########################################################################
+## MariaDB Datenbank herunterladen und aktivieren
+##########################################################################
+
+- name: Install MariaDB server
+  ansible.builtin.apt:
+    name: mariadb-server
+    state: present
+
+- name: Ensure MariaDB is running and enabled
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+
+##########################################################################
+## Wordpress Datenbank & Nutzer anlegen
+##########################################################################
+
+  # WP_DEV_VM braucht Python Bibliothek, damit Ansible mit MariaDB kommunizieren kann
+- name: Install Python MySQL driver (PyMySQL) 
+  ansible.builtin.apt:
+    name: python3-pymysql
+    state: present
+
+- name: Create WordPress database
+  community.mysql.mysql_db: # Module werden von Community gepflegt
+    name: "{{ wp_db_name }}"
+    state: present
+    login_unix_socket: /run/mysqld/mysqld.sock # Modul verbindet sich als root über diesen Socket
+
+- name: Create WordPress DB user
+  community.mysql.mysql_user: 
+    name: "{{ wp_db_user }}"
+    password: "{{ wp_db_password }}"
+    priv: "{{ wp_db_name }}.*:ALL"
+    host: localhost # = PC von MySQL Benutzer (nicht Ansible), localhost weil WP auf derselben VM läuft
+    state: present # DB wird nur angelegt, falls nicht vorhanden
+    login_unix_socket: /run/mysqld/mysqld.sock
+
+    # MySQL Nutzer besteht aus 2 Teilen: User & Host
+
+##########################################################################
+## WordPress Versions-Check
+##########################################################################
+
+- name: Get latest WordPress version from API
+  ansible.builtin.uri:
+    url: "https://api.wordpress.org/core/version-check/1.7/"
+    return_content: yes
+  register: wp_version_check
+  changed_when: false
+  tags: wp_update_check
+
+- name: Extract latest WordPress version from API response
+  ansible.builtin.set_fact:
+    wp_latest_version: "{{ wp_version_check.json.offers[0].current }}"
+  when: wp_version_check.json.offers is defined and wp_version_check.json.offers | length > 0
+  tags: wp_update_check
+
+- name: Inform about newer WordPress version
+  ansible.builtin.debug:
+    msg: >
+      Es ist eine neuere WordPress-Version verfügbar: {{ wp_latest_version }}
+      (aktuell gepinnt: {{ wp_version }}).
+      Wenn du updaten willst, passe 'wp_version' an
+      und setze 'wp_update_allowed: true'.
+  when:
+    - wp_latest_version is defined
+    - wp_latest_version is version(wp_version, '>')
+  tags: wp_update_check
+
+
+##########################################################################
+## Wordpress herunterladen und entpacken
+##########################################################################
+
+- name: Check if WordPress is already installed
+  ansible.builtin.stat:
+    path: "{{ wp_root }}/wp-settings.php"
+    # /var/www/wordpress-dev/wp-settings.php
+    # existiert, wenn WP installiert wurde
+  register: wp_installed
+  # speichert komplettes Info-Objekt
+
+- name: Download pinned WordPress version
+  ansible.builtin.get_url:
+    url: "{{ wp_download_url }}"
+    dest: /tmp/wordpress-{{ wp_version }}.tar.gz
+    mode: "0644"
+  when: not wp_installed.stat.exists or wp_update_allowed
+  # wp_installed.stat.exists (true/false)
+
+- name: Create WordPress directory
+  ansible.builtin.file:
+    path: "{{ wp_root }}" # /var/www/wordpress-dev
+    state: directory
+    owner: www-data # gehört Apache
+    group: www-data
+    mode: "0755" # owner: lesen/schreiben/ausführen, andere: lesen/ausführen
+
+- name: Extract WordPress archive
+  ansible.builtin.unarchive:
+    src: /tmp/wordpress-{{ wp_version }}.tar.gz
+    dest: "{{ wp_root }}"
+    remote_src: true # weil source auf VM liegt
+    extra_opts: [--strip-components=1] # entfernt obersten Ordner wordpress/ -> damit Dateien direkt in wordpress-dev landen
+    creates: "{{ wp_root }}/wp-settings.php"
+  when: not wp_installed.stat.exists or wp_update_allowed
+
+- name: Ensure correct permission on WordPress directory
+  ansible.builtin.file:
+    path: "{{ wp_root }}"
+    state: directory
+    recurse: true # wendet owner/group auf alle Unterordner & Dateien an 
+    owner: www-data
+    group: www-data
+
+  # wp-config
+- name: Install wp-config.php
+  ansible.builtin.copy:
+    src: wp-config.php
+    dest: "{{ wp_root }}/wp-config.php"
+    owner: www-data
+    group: www-data
+    mode: "0640"
+
+
+##########################################################################
+## Apache Virtual Host für website.dev.homelab.lan
+##########################################################################
+
+- name: Create Apache vhost for WordPress DEV
+  ansible.builtin.copy:
+    dest: /etc/apache2/sites-available/{{ wp_server_name }}.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      <VirtualHost *:80>
+          ServerName {{ wp_server_name }}
+          DocumentRoot {{ wp_root }}
+
+          <Directory {{ wp_root }}>
+              AllowOverride All
+              Require all granted
+          </Directory>
+
+          ErrorLog ${APACHE_LOG_DIR}/website-dev-error.log
+          CustomLog ${APACHE_LOG_DIR}/website-dev-access.log combined
+      </VirtualHost>
+
+- name: Disable default Apache site
+  ansible.builtin.file:
+    path: /etc/apache2/sites-enabled/000-default.conf
+    state: absent
+
+- name: Enable WordPress DEV vhost
+  ansible.builtin.file:
+    src: /etc/apache2/sites-available/{{ wp_server_name }}.conf
+    dest: /etc/apache2/sites-enabled/{{ wp_server_name }}.conf
+    state: link
+
+- name: Reload Apache to apply vhost changes
+  ansible.builtin.service:
+    name: apache2
+    state: reloaded
+
+
